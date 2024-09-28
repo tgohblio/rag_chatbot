@@ -1,9 +1,9 @@
 import os
-import requests
 import json
 import uuid
+import httpx
 from datetime import datetime
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from contextlib import asynccontextmanager
 
@@ -108,7 +108,7 @@ def generateRandomFilename() -> str:
     filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_" + uuid.uuid4().hex + ".mp3"
     return filename
 
-def isFileInDirectory(file_path, directory_path):
+def isFileInDirectory(file_name, directory_path):
     """Checks if a file exists in a directory.
 
     Args:
@@ -118,13 +118,13 @@ def isFileInDirectory(file_path, directory_path):
     Returns:
         bool: True if the file exists in the directory, False otherwise.
     """
-
-    if os.path.isfile(file_path) and os.path.commonprefix([file_path, directory_path]) == directory_path:
+    file_path = os.path.join(os.getcwd(), directory_path, file_name)
+    if os.path.isfile(file_path):
         return True
     else:
         return False
 
-def speechToText(input: str) -> str:
+async def speechToText(input: str) -> str:
     # Initialize the Groq client
     client = Groq()
     # Specify the path to the audio file
@@ -142,7 +142,7 @@ def speechToText(input: str) -> str:
         print(transcription.text)
     return transcription.text
 
-def textToSpeech(prompt: str) -> str:
+async def textToSpeech(prompt: str) -> str:
     tts_url = "https://api.fish.audio/v1/tts"
     api_key = os.getenv("FISH_API_KEY")
 
@@ -160,15 +160,21 @@ def textToSpeech(prompt: str) -> str:
         "opus_bitrate": 64,
         "latency": "normal"
     }
-    response = requests.post(tts_url, json=payload, headers=headers)
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(tts_url, json=payload, headers=headers)
+    except Exception as exc:
+        # Handle any other unexpected errors
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {exc}")
+
     if response.status_code == 200:
         filename = generateRandomFilename()
         with open(f"output/{filename}", "wb") as f:
-            output_bytes = textToSpeech(str(response))
-            f.write(output_bytes)
+            f.write(response.content)
             return filename
     else:
-        return "Error! No file generated"
+        raise HTTPException(status_code=response.status_code, detail="Error generating audio file")
 
 ## Start of fastAPI application ##
 app = FastAPI(lifespan=lifespan)
@@ -189,7 +195,7 @@ async def generateResponseFromText(request: Request):
         return JSONResponse({"error": "Invalid JSON input"}, 400)
     prompt = data.get("text")
     msg = chatbot.chat_with_rag(prompt)
-    output_path = textToSpeech(msg)
+    output_path = await textToSpeech(msg)
     return JSONResponse({"reply": msg, "file": output_path})
 
 @app.post("/api/audio")
@@ -202,19 +208,18 @@ async def generateResponseFromSpeech(request: Request):
     filename = data.get("file")
     prompt =  speechToText(filename)
     msg = chatbot.chat_with_rag(prompt)
-    output_path = textToSpeech(msg)
+    output_path = await textToSpeech(msg)
     return JSONResponse({"reply": msg, "file": output_path})
 
-@app.get("/api/audio/download")
-async def returnAudioFileResponse(request: Request):
-    data = await request.json()
-    if data is None:
-        return JSONResponse({"error": "Invalid JSON input"}, 400)
-    filename = data.get("file")
-
-    if isFileInDirectory(filename, "output"):
-        print(f"{filename} found.")
-        file_path = os.path.join(os.getcwd(), "output", filename)
+@app.get("/api/audio/download/{file_name}")
+async def returnAudioFileResponse(file_name: str):
+    """"
+    example:
+    GET /api/audio/download/response.mp3
+    """
+    if isFileInDirectory(file_name, "output"):
+        print(f"{file_name} found.")
+        file_path = os.path.join(os.getcwd(), "output", file_name)
         return FileResponse(file_path)
     else:
         return JSONResponse({"error": "Resource not found"}, 404)
