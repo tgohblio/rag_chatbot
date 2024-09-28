@@ -3,7 +3,7 @@ import json
 import uuid
 import httpx
 from datetime import datetime
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, File, UploadFile
 from fastapi.responses import JSONResponse, FileResponse
 from contextlib import asynccontextmanager
 
@@ -198,18 +198,35 @@ async def generateResponseFromText(request: Request):
     output_path = await textToSpeech(msg)
     return JSONResponse({"reply": msg, "file": output_path})
 
-@app.post("/api/audio")
-async def generateResponseFromSpeech(request: Request):
+@app.post("/api/audio/upload")
+async def generateResponseFromSpeech(file: UploadFile = File(...)):
     """Generate reply from input prompt of type WAV or MP3 
     """
-    data = await request.json()
-    if data is None:
-        return JSONResponse({"error": "Invalid JSON input"}, 400)
-    filename = data.get("file")
-    prompt =  speechToText(filename)
-    msg = chatbot.chat_with_rag(prompt)
-    output_path = await textToSpeech(msg)
-    return JSONResponse({"reply": msg, "file": output_path})
+    try:
+        # Ensure the file is an MP3
+        if not file.filename.lower().endswith('.mp3'):
+            return JSONResponse({"error": "File must be an MP3"}, status_code=400)
+
+        # Generate a unique filename
+        filename = generateRandomFilename()
+
+        # Save the file
+        file_location = f"input/{filename}"
+        with open(file_location, "wb+") as file_object:
+            file_object.write(await file.read())
+
+        # Process the audio file
+        prompt = await speechToText(file_location)
+        msg = chatbot.chat_with_rag(prompt)
+        output_path = await textToSpeech(msg)
+
+        return JSONResponse({
+            "status": "File uploaded successfully",
+            "reply": msg,
+            "output": output_path
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 @app.get("/api/audio/download/{file_name}")
 async def returnAudioFileResponse(file_name: str):
