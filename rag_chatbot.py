@@ -14,7 +14,6 @@ from llama_index.llms.openai import OpenAI
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
 # https://docs.llamaindex.ai/en/stable/examples/llm/groq/
 
-# !pip install --quiet llama-index-llms-groq
 _ = load_dotenv(find_dotenv())  # read local .env file
 
 app_config = dict() # initialize empty dict
@@ -93,6 +92,15 @@ def setup(voice_name: str = "SortingHat") -> bool:
                 global chatbot
                 chatbot = chatModel(app_config)
                 retVal = True
+
+    # make input and output directories if doesn't exists
+    in_dir = os.path.join(os.getcwd(), "input")
+    if not os.path.exists(in_dir):
+        os.mkdir(in_dir)
+    out_dir = os.path.join(os.getcwd(), "output")
+    if not os.path.exists(out_dir):
+        os.mkdir(out_dir)
+
     return retVal
 
 def getAllVoices() -> list:
@@ -103,9 +111,9 @@ def getAllVoices() -> list:
             retVal.append(voice["name"])
     return retVal
 
-def generateRandomFilename() -> str:
+def generateRandomFilename(file_extension=".mp3") -> str:
     random_bytes = os.urandom(16)
-    filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_" + uuid.uuid4().hex + ".mp3"
+    filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_" + uuid.uuid4().hex + file_extension
     return filename
 
 def isFileInDirectory(file_name, directory_path):
@@ -128,7 +136,6 @@ async def speechToText(file_path: str) -> str:
     # Initialize the Groq client
     client = Groq()
     # Create a transcription of the audio file
-    file_path = f"input/filename"
     with open(file_path, "rb") as file:
         transcription = client.audio.transcriptions.create(
             file=(file_path, file.read()), # Required audio file
@@ -163,13 +170,15 @@ async def textToSpeech(prompt: str) -> str:
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(tts_url, json=payload, headers=headers)
-    except Exception as exc:
+    except Exception as e:
         # Handle any other unexpected errors
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {exc}")
+        return JSONResponse({"error": str(e)}, 500)
 
     if response.status_code == 200:
         filename = generateRandomFilename()
-        with open(f"output/{filename}", "wb+") as f:
+        directory = os.path.join(os.getcwd(), "output")
+        file_location = os.path.join(directory, filename)
+        with open(file_location, "wb+") as f:
             f.write(response.content)
             return filename
     else:
@@ -195,22 +204,21 @@ async def generateResponseFromText(request: Request):
     prompt = data.get("text")
     msg = chatbot.chat_with_rag(prompt)
     output_path = await textToSpeech(msg)
-    return JSONResponse({"reply": msg, "file": output_path})
+    return JSONResponse({"reply": msg, "output": output_path})
 
 @app.post("/api/audio/upload")
 async def generateResponseFromSpeech(file: UploadFile = File(...)):
-    """Generate reply from input prompt of type WAV or MP3 
+    """Generate reply from input prompt of type WAV
     """
     try:
-        # Ensure the file is an MP3
-        if not file.filename.lower().endswith('.mp3'):
-            return JSONResponse({"error": "File must be an MP3"}, status_code=400)
+        # Ensure the file format is WAV
+        if not file.filename.lower().endswith('.wav'):
+            return JSONResponse({"error": "File must be a WAV"}, 400)
 
         # Generate a unique filename
-        filename = generateRandomFilename()
-
-        # Save the file
-        file_location = f"input/{filename}"
+        filename = generateRandomFilename(".wav")
+        directory = os.path.join(os.getcwd(), "input")
+        file_location = os.path.join(directory, filename)
         with open(file_location, "wb+") as file_object:
             file_object.write(await file.read())
 
@@ -218,14 +226,9 @@ async def generateResponseFromSpeech(file: UploadFile = File(...)):
         prompt = await speechToText(file_location)
         msg = chatbot.chat_with_rag(prompt)
         output_path = await textToSpeech(msg)
-
-        return JSONResponse({
-            "status": "File uploaded successfully",
-            "reply": msg,
-            "output": output_path
-        })
+        return JSONResponse({"reply": msg, "output": output_path})
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse({"error": str(e)}, 500)
 
 @app.get("/api/audio/download/{file_name}")
 async def returnAudioFileResponse(file_name: str):
