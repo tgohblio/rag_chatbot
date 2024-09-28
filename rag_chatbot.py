@@ -73,11 +73,30 @@ chatbot: chatModel
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """handle any user tasks required at startup and shutdown of fastAPI application"""
-    # handle user init tasks here
+    ##############################
+    # handle user init tasks below
+    ##############################
     setup()
     yield
-    # handle shutdown tasks here
+    ############################
+    # handle shutdown tasks below
+    ############################
+    # if there files in all the directories, remove them
+    path = os.path.join(os.getcwd(), "output")
+    for file_name in os.listdir(path):
+        # construct full file path
+        file_path = os.path.join(path, file_name)
+        if os.path.isfile(file_path):
+            print('Deleting file:', file_path)
+            os.remove(file_path)
 
+    path = os.path.join(os.getcwd(), "input")
+    for file_name in os.listdir(path):
+        # construct full file path
+        file_path = os.path.join(path, file_name)
+        if os.path.isfile(file_path):
+            print('Deleting file:', file_path)
+            os.remove(file_path)
 
 def setup(voice_name: str = "SortingHat") -> bool:
     # get app config from config file
