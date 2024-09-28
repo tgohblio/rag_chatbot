@@ -124,15 +124,14 @@ def isFileInDirectory(file_name, directory_path):
     else:
         return False
 
-async def speechToText(input: str) -> str:
+async def speechToText(file_path: str) -> str:
     # Initialize the Groq client
     client = Groq()
-    # Specify the path to the audio file
-    filename = os.path.dirname(__file__) + input # Replace with your audio file!
     # Create a transcription of the audio file
-    with open(filename, "rb") as file:
+    file_path = f"input/filename"
+    with open(file_path, "rb") as file:
         transcription = client.audio.transcriptions.create(
-            file=(filename, file.read()), # Required audio file
+            file=(file_path, file.read()), # Required audio file
             model="distil-whisper-large-v3-en", # Required model to use for transcription
             response_format="json",  # Optional
             language="en",  # Optional
@@ -170,7 +169,7 @@ async def textToSpeech(prompt: str) -> str:
 
     if response.status_code == 200:
         filename = generateRandomFilename()
-        with open(f"output/{filename}", "wb") as f:
+        with open(f"output/{filename}", "wb+") as f:
             f.write(response.content)
             return filename
     else:
