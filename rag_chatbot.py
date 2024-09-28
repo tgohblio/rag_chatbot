@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, FileResponse
+from contextlib import asynccontextmanager
 
 from groq import Groq
 from dotenv import load_dotenv, find_dotenv
@@ -69,7 +70,17 @@ class chatModel:
 
 chatbot: chatModel
 
-def setup(voice_name: str) -> bool:
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """handle any user tasks required at startup and shutdown of fastAPI application"""
+    # handle user init tasks here
+    setup()
+    yield
+    # handle shutdown tasks here
+
+
+def setup(voice_name: str = "SortingHat") -> bool:
     # get app config from config file
     retVal = False
     with open("./config.json", "r") as f:
@@ -160,7 +171,7 @@ def textToSpeech(prompt: str) -> str:
         return "Error! No file generated"
 
 ## Start of fastAPI application ##
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 
 @app.post("/api/voice/{voice}")
 async def setVoice(voice: str):
