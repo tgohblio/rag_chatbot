@@ -122,7 +122,7 @@ def setup(voice_name: str = "SortingHat") -> bool:
 
     return retVal
 
-def getAllVoices() -> list:
+def get_all_voices() -> list:
     retVal = []
     with open("./config.json", "r") as f:
         data = json.load(f)
@@ -130,12 +130,12 @@ def getAllVoices() -> list:
             retVal.append(voice["name"])
     return retVal
 
-def generateRandomFilename(file_extension=".mp3") -> str:
+def generate_random_filename(file_extension=".mp3") -> str:
     random_bytes = os.urandom(16)
     filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_" + uuid.uuid4().hex + file_extension
     return filename
 
-def isFileInDirectory(file_name, directory_path):
+def is_file_in_directory(file_name, directory_path):
     """Checks if a file exists in a directory.
 
     Args:
@@ -151,7 +151,7 @@ def isFileInDirectory(file_name, directory_path):
     else:
         return False
 
-async def speechToText(file_path: str) -> str:
+async def speech_to_text(file_path: str) -> str:
     # Initialize the Groq client
     client = Groq()
     # Create a transcription of the audio file
@@ -167,7 +167,7 @@ async def speechToText(file_path: str) -> str:
         print(transcription.text)
     return transcription.text
 
-async def textToSpeech(prompt: str) -> str:
+async def text_to_speech(prompt: str) -> str:
     tts_url = "https://api.fish.audio/v1/tts"
     api_key = os.getenv("FISH_API_KEY")
 
@@ -194,7 +194,7 @@ async def textToSpeech(prompt: str) -> str:
         return JSONResponse({"error": str(e)}, 500)
 
     if response.status_code == 200:
-        filename = generateRandomFilename()
+        filename = generate_random_filename()
         directory = os.path.join(os.getcwd(), "output")
         file_location = os.path.join(directory, filename)
         with open(file_location, "wb+") as f:
@@ -207,8 +207,8 @@ async def textToSpeech(prompt: str) -> str:
 app = FastAPI(lifespan=lifespan)
 
 @app.post("/api/voice/{voice}")
-async def setVoice(voice: str):
-    voice_list = getAllVoices()
+async def set_voice(voice: str):
+    voice_list = get_all_voices()
     if voice in voice_list:
         setup(voice)
         return JSONResponse({"status" :"OK"})
@@ -216,17 +216,17 @@ async def setVoice(voice: str):
         return JSONResponse({"error": "Voice not found"}, 404)
 
 @app.post("/api/text")
-async def generateResponseFromText(request: Request):
+async def generate_response_from_text(request: Request):
     data = await request.json()
     if data is None:
         return JSONResponse({"error": "Invalid JSON input"}, 400)
     prompt = data.get("text")
     msg = chatbot.chat_with_rag(prompt)
-    output_path = await textToSpeech(msg)
+    output_path = await text_to_speech(msg)
     return JSONResponse({"reply": msg, "output": output_path})
 
 @app.post("/api/audio/upload")
-async def generateResponseFromSpeech(file: UploadFile = File(...)):
+async def generate_response_from_speech(file: UploadFile = File(...)):
     """Generate reply from input prompt of type WAV
     """
     try:
@@ -235,29 +235,33 @@ async def generateResponseFromSpeech(file: UploadFile = File(...)):
             return JSONResponse({"error": "File must be a WAV"}, 400)
 
         # Generate a unique filename
-        filename = generateRandomFilename(".wav")
+        filename = generate_random_filename(".wav")
         directory = os.path.join(os.getcwd(), "input")
         file_location = os.path.join(directory, filename)
         with open(file_location, "wb+") as file_object:
             file_object.write(await file.read())
 
         # Process the audio file
-        prompt = await speechToText(file_location)
+        prompt = await speech_to_text(file_location)
         msg = chatbot.chat_with_rag(prompt)
-        output_path = await textToSpeech(msg)
+        output_path = await text_to_speech(msg)
         return JSONResponse({"reply": msg, "output": output_path})
     except Exception as e:
         return JSONResponse({"error": str(e)}, 500)
 
 @app.get("/api/audio/download/{file_name}")
-async def returnAudioFileResponse(file_name: str):
+async def return_audio_file_response(file_name: str):
     """"
     example:
     GET /api/audio/download/response.mp3
     """
-    if isFileInDirectory(file_name, "output"):
+    if is_file_in_directory(file_name, "output"):
         print(f"{file_name} found.")
         file_path = os.path.join(os.getcwd(), "output", file_name)
         return FileResponse(file_path)
     else:
         return JSONResponse({"error": "Resource not found"}, 404)
+
+@app.post("/api/hearthbeat")
+async def return_heartbeat():
+    return JSONResponse({"status": "running"})
