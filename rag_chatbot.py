@@ -262,6 +262,6 @@ async def return_audio_file_response(file_name: str):
     else:
         return JSONResponse({"error": "Resource not found"}, 404)
 
-@app.post("/api/hearthbeat")
+@app.post("/api/heartbeat")
 async def return_heartbeat():
     return JSONResponse({"status": "running"})
