@@ -3,7 +3,7 @@ import json
 import uuid
 import httpx
 from datetime import datetime
-from fastapi import FastAPI, Request, HTTPException, File, UploadFile
+from fastapi import FastAPI, Request, HTTPException, File, UploadFile, WebSocket
 from fastapi.responses import JSONResponse, FileResponse
 from contextlib import asynccontextmanager
 
