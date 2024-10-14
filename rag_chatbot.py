@@ -3,7 +3,7 @@ import json
 import uuid
 import httpx
 from datetime import datetime
-from fastapi import FastAPI, Request, HTTPException, File, UploadFile, WebSocket
+from fastapi import FastAPI, Request, HTTPException, File, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, FileResponse
 from contextlib import asynccontextmanager
 
@@ -68,6 +68,35 @@ class chatModel:
         self._chat_engine.reset()
 
 chatbot: chatModel
+
+class WSConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, WebSocket] = {}
+        self.client_addr = ""
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.client_addr = f"{websocket.client.host}:{websocket.client.port}"
+        self.active_connections[self.client_addr] = websocket
+        return self.client_addr
+
+    def disconnect(self, client_addr: str):
+        del self.active_connections[client_addr]
+
+    async def send_message(self, client_addr: str, message: str):
+        await self.active_connections[client_addr].send_text(message)
+
+    async def send_data(self, client_addr: str, data: bytes):
+        await self.active_connections[client_addr].send_bytes(data)
+
+    async def broadcast(self, message: str):
+        for connection in self.active_connections.values():
+            await connection.send_text(message)
+
+    def get_clients(self):
+        return list(self.active_connections.keys())
+
+ws_manager = WSConnectionManager()
 
 
 @asynccontextmanager
@@ -222,12 +251,23 @@ async def generate_response_from_text(request: Request):
         return JSONResponse({"error": "Invalid JSON input"}, 400)
     prompt = data.get("text")
     msg = chatbot.chat_with_rag(prompt)
-    output_path = await text_to_speech(msg)
-    return JSONResponse({"reply": msg, "output": output_path})
+    output_file = await text_to_speech(msg)
 
-@app.post("/api/audio/upload")
+    # read file and send as bytes
+    output_path = os.path.join(os.getcwd(), "output", output_file)
+    try:
+        with open(output_path, "rb") as data:
+            data.read()
+        await ws_manager.send_data(ws_manager.client_addr, data)
+        return JSONResponse({"reply": msg, "output": output_file})
+
+    except Exception as e:
+        ws_manager.disconnect(ws_manager.client_addr)
+        return JSONResponse({"error": str(e)}, 500)
+
+@app.post("/api/audio/input")
 async def generate_response_from_speech(file: UploadFile = File(...)):
-    """Generate reply from input prompt of type WAV
+    """Generate reply from a voice input
     """
     try:
         # Ensure the file format is WAV
@@ -244,9 +284,17 @@ async def generate_response_from_speech(file: UploadFile = File(...)):
         # Process the audio file
         prompt = await speech_to_text(file_location)
         msg = chatbot.chat_with_rag(prompt)
-        output_path = await text_to_speech(msg)
+        output_file = await text_to_speech(msg)
+
+        # read file and send as bytes
+        output_path = os.path.join(os.getcwd(), "output", output_file)
+        with open(output_path, "rb") as data:
+            data.read()
+        await ws_manager.send_data(ws_manager.client_addr, data)
         return JSONResponse({"reply": msg, "output": output_path})
+
     except Exception as e:
+        ws_manager.disconnect(ws_manager.client_addr)
         return JSONResponse({"error": str(e)}, 500)
 
 @app.get("/api/audio/download/{file_name}")
@@ -265,3 +313,12 @@ async def return_audio_file_response(file_name: str):
 @app.get("/api/heartbeat")
 async def return_heartbeat():
     return JSONResponse({"status": "running"})
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    client_addr = await ws_manager.connect(websocket)
+    try:
+        await ws_manager.broadcast(f"Client {client_addr} joined the chat")
+    except WebSocketDisconnect:
+        ws_manager.disconnect(client_addr)
+        await ws_manager.broadcast(f"Client {client_addr} left the chat")

@@ -6,3 +6,4 @@ python-dotenv==1.0.1
 python-multipart==0.0.10
 fastapi[standard]==0.115.0
 groq==0.11.0
+websockets
