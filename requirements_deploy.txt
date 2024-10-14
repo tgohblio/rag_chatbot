@@ -3,6 +3,5 @@ llama-index-llms-openai==0.2.6
 llama-index-embeddings-openai==0.2.5
 python-dotenv==1.0.1
 python-multipart==0.0.10
-fastapi==0.115.0
-uvicorn
+fastapi[standard]==0.115.0
 groq==0.11.0
