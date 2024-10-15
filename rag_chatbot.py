@@ -4,7 +4,7 @@ import uuid
 import httpx
 from datetime import datetime
 from fastapi import FastAPI, Request, HTTPException, File, UploadFile
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from contextlib import asynccontextmanager
 
 from groq import Groq
@@ -67,8 +67,9 @@ class chatModel:
         """
         self._chat_engine.reset()
 
+# Globals
 chatbot: chatModel
-
+latest_mp3_response = "" # filename of the latest response from chatbot
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -151,6 +152,11 @@ def is_file_in_directory(file_name, directory_path):
     else:
         return False
 
+def iterfile(file_path: str):
+    """Stream an mp3 file in chunks. Python reads file in 8192-byte chunk"""
+    with open(file_path, mode="rb") as file_chunk:
+        yield from file_chunk
+
 async def speech_to_text(file_path: str) -> str:
     # Initialize the Groq client
     client = Groq()
@@ -223,6 +229,7 @@ async def generate_response_from_text(request: Request):
     prompt = data.get("text")
     msg = chatbot.chat_with_rag(prompt)
     output_path = await text_to_speech(msg)
+    latest_mp3_response = output_path
     return JSONResponse({"reply": msg, "output": output_path})
 
 @app.post("/api/audio/upload")
@@ -245,6 +252,7 @@ async def generate_response_from_speech(file: UploadFile = File(...)):
         prompt = await speech_to_text(file_location)
         msg = chatbot.chat_with_rag(prompt)
         output_path = await text_to_speech(msg)
+        latest_mp3_response = output_path
         return JSONResponse({"reply": msg, "output": output_path})
     except Exception as e:
         return JSONResponse({"error": str(e)}, 500)
@@ -265,3 +273,28 @@ async def return_audio_file_response(file_name: str):
 @app.get("/api/heartbeat")
 async def return_heartbeat():
     return JSONResponse({"status": "running"})
+
+@app.get("/api/stream/{file_name}")
+async def stream(file_name: str):
+    """"
+    example:
+    GET /api/stream/response.mp3
+    """
+    if is_file_in_directory(file_name, "output"):
+        print(f"{file_name} found.")
+        file_path = os.path.join(os.getcwd(), "output", file_name)
+        return StreamingResponse(
+            iterfile(file_path),
+            media_type="audio/mpeg",
+            headers={'Content-Disposition': f'attachment; filename="{file_name}"'})
+    else:
+        return JSONResponse({"error": "Resource not found"}, 404)
+
+@app.get("/api/audio/latest")
+async def return_latest_audio_file():
+    if is_file_in_directory(latest_mp3_response, "output"):
+        print(f"{latest_mp3_response} found.")
+        file_path = os.path.join(os.getcwd(), "output", latest_mp3_response)
+        return JSONResponse({"status": "latest", "file": file_path})
+    else:
+        return JSONResponse({"status": "latest", "file": ""}, 404)
