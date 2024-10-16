@@ -5,6 +5,7 @@ import httpx
 from datetime import datetime
 from fastapi import FastAPI, Request, HTTPException, File, UploadFile
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from groq import Groq
@@ -212,6 +213,16 @@ async def text_to_speech(prompt: str) -> str:
 ## Start of fastAPI application ##
 app = FastAPI(lifespan=lifespan)
 
+# Add CORS middleware to allow cross-origin requests.
+# This is often necessary when your frontend is served from a different domain or port than your API.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+
 @app.post("/api/voice/{voice}")
 async def set_voice(voice: str):
     voice_list = get_all_voices()
@@ -285,10 +296,21 @@ async def stream(file_name: str):
     if is_file_in_directory(file_name, "output"):
         print(f"{file_name} found.")
         file_path = os.path.join(os.getcwd(), "output", file_name)
+        # Get the file size
+        file_size = os.path.getsize(file_path)
+        
+        headers = {
+            'Accept-Ranges': 'bytes',
+            'Content-Type': 'audio/mpeg',
+            'Content-Length': str(file_size),
+            'Content-Range': f'bytes 0-{file_size-1}/{file_size}'
+        }
+        
         return StreamingResponse(
             iterfile(file_path),
-            media_type="audio/mpeg",
-            headers={'Content-Disposition': f'attachment; filename="{file_name}"'})
+            headers=headers,
+            media_type="audio/mpeg"
+        )
     else:
         return JSONResponse({"error": "Resource not found"}, 404)
 
