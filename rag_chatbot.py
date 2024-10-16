@@ -229,6 +229,7 @@ async def generate_response_from_text(request: Request):
     prompt = data.get("text")
     msg = chatbot.chat_with_rag(prompt)
     output_path = await text_to_speech(msg)
+    global latest_mp3_response
     latest_mp3_response = output_path
     return JSONResponse({"reply": msg, "output": output_path})
 
@@ -252,6 +253,7 @@ async def generate_response_from_speech(file: UploadFile = File(...)):
         prompt = await speech_to_text(file_location)
         msg = chatbot.chat_with_rag(prompt)
         output_path = await text_to_speech(msg)
+        global latest_mp3_response
         latest_mp3_response = output_path
         return JSONResponse({"reply": msg, "output": output_path})
     except Exception as e:
@@ -292,9 +294,8 @@ async def stream(file_name: str):
 
 @app.get("/api/audio/latest")
 async def return_latest_audio_file():
+    global latest_mp3_response
     if is_file_in_directory(latest_mp3_response, "output"):
-        print(f"{latest_mp3_response} found.")
-        file_path = os.path.join(os.getcwd(), "output", latest_mp3_response)
-        return JSONResponse({"status": "latest", "file": file_path})
+        return JSONResponse({"status": "latest", "file": latest_mp3_response})
     else:
         return JSONResponse({"status": "latest", "file": ""}, 404)
