@@ -2,6 +2,7 @@ import os
 import json
 import uuid
 import httpx
+import gradio as gr
 from datetime import datetime
 from fastapi import FastAPI, Request, HTTPException, File, UploadFile
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
@@ -263,6 +264,39 @@ async def text_to_speech(prompt: str) -> str:
     else:
         raise HTTPException(status_code=response.status_code, detail="Error generating audio file")
 
+async def response_from_text(prompt: str) -> tuple:
+    """
+    Generates a response from text input.
+
+    Args:
+        prompt: The text input.
+
+    Returns:
+        A tuple containing the generated response and the output audio file path.
+    """
+    msg = chatbot.chat_with_rag(prompt)
+    output_path = await text_to_speech(msg)
+    global latest_mp3_response
+    latest_mp3_response = output_path
+    return (msg, output_path)
+
+async def response_from_speech(file_path) -> tuple:
+    """
+    Generates a response from speech input.
+
+    Args:
+        file_path: The path to the audio file.
+
+    Returns:
+        A tuple containing the generated response and the output audio file path.
+    """
+    prompt = await speech_to_text(file_path)
+    msg = chatbot.chat_with_rag(prompt)
+    output_path = await text_to_speech(msg)
+    global latest_mp3_response
+    latest_mp3_response = output_path
+    return (msg, output_path)
+
 ## Start of fastAPI application ##
 app = FastAPI(lifespan=lifespan)
 
@@ -309,10 +343,7 @@ async def generate_response_from_text(request: Request):
     if data is None:
         return JSONResponse({"error": "Invalid JSON input"}, 400)
     prompt = data.get("text")
-    msg = chatbot.chat_with_rag(prompt)
-    output_path = await text_to_speech(msg)
-    global latest_mp3_response
-    latest_mp3_response = output_path
+    msg, output_path = await response_from_text(prompt)
     return JSONResponse({"reply": msg, "output": output_path})
 
 @app.post("/api/audio/upload")
@@ -339,11 +370,7 @@ async def generate_response_from_speech(file: UploadFile = File(...)):
             file_object.write(await file.read())
 
         # Process the audio file
-        prompt = await speech_to_text(file_location)
-        msg = chatbot.chat_with_rag(prompt)
-        output_path = await text_to_speech(msg)
-        global latest_mp3_response
-        latest_mp3_response = output_path
+        msg, output_path = await response_from_speech(file_location)
         return JSONResponse({"reply": msg, "output": output_path})
     except Exception as e:
         return JSONResponse({"error": str(e)}, 500)
@@ -421,3 +448,73 @@ async def return_latest_audio_file():
         return JSONResponse({"status": "latest", "file": latest_mp3_response})
     else:
         return JSONResponse({"status": "latest", "file": ""}, 404)
+
+async def transcribe(prompt, audio):
+    """Send a text message or audio file to an external server
+        and get back a text reply from the role-playing chatbot"""
+    if audio is not None:
+        msg, _ = await response_from_speech(audio)
+        return msg
+    elif len(prompt):
+        msg, _ = await response_from_text(prompt)
+        return msg
+    elif audio is None and prompt is None:
+        return "Please provide either a prompt or an audio file"
+
+# The user interface
+with gr.Blocks() as demo:
+    gr.Markdown("# ChatBot App Demo")
+
+    with gr.Column():    
+        with gr.Row():
+            with gr.Column():
+                output_text = gr.Textbox(lines=2, label="Output")
+
+            with gr.Column():
+                prompt_input = gr.Textbox(lines=2, label="Type your message", placeholder="Who are you?")
+                audio_input = gr.Audio(sources="microphone", label="Use your voice", type="filepath", format="wav")
+
+        with gr.Row():
+            clear_button = gr.Button("Clear", variant="secondary")
+            clear_button.click(lambda: (None, None), inputs=[], outputs=[prompt_input, audio_input])
+            transcribe_button = gr.Button("Send", variant="primary")
+            transcribe_button.click(transcribe, inputs=[prompt_input, audio_input], outputs=output_text)
+
+# mount gradio UI 
+# Run this from the terminal as you would normally start a FastAPI app: `uvicorn rag_chatbot:app` and
+# navigate to http://localhost:8000/gradio in your browser.
+app = gr.mount_gradio_app(app, demo, path="/gradio")
+
+async def response_from_text(prompt: str) -> tuple:
+    """
+    Generates a response from text input.
+
+    Args:
+        prompt: The text input.
+
+    Returns:
+        A tuple containing the generated response and the output audio file path.
+    """
+    msg = chatbot.chat_with_rag(prompt)
+    output_path = await text_to_speech(msg)
+    global latest_mp3_response
+    latest_mp3_response = output_path
+    return (msg, output_path)
+
+
+async def response_from_speech(file_path) -> tuple:
+    """
+    Generates a response from speech input.
+
+    Args:
+        file_path: The path to the audio file.
+
+    Returns:
+        A tuple containing the generated response and the output audio file path.
+    """
+    prompt = await speech_to_text(file_path)
+    msg = chatbot.chat_with_rag(prompt)
+    output_path = await text_to_speech(msg)
+    global latest_mp3_response
+    latest_mp3_response = output_path
+    return (msg, output_path)
