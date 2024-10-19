@@ -27,6 +27,12 @@ class chatModel:
     It leverages a retrieval mechanism to access relevant information from a provided data source before generating a response.
     """
     def __init__(self, config: dict):
+        """
+        Initializes the chat model with the provided configuration.
+
+        Args:
+            config: A dictionary containing the configuration for the chat model.
+        """
         self.voice_model_id = config["model id"]
         self._model = OpenAI("gpt-4o-mini")
         self._system_prompt = config["system prompt"]
@@ -74,7 +80,9 @@ latest_mp3_response = "" # filename of the latest response from chatbot
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """handle any user tasks required at startup and shutdown of fastAPI application"""
+    """
+    Handles any user tasks required at startup and shutdown of the FastAPI application.
+    """
     ##############################
     # handle user init tasks below
     ##############################
@@ -101,6 +109,15 @@ async def lifespan(app: FastAPI):
             os.remove(file_path)
 
 def setup(voice_name: str = "SortingHat") -> bool:
+    """
+    Sets up the chatbot with the specified voice.
+
+    Args:
+        voice_name: The name of the voice to use.
+
+    Returns:
+        True if the setup was successful, False otherwise.
+    """
     # get app config from config file
     retVal = False
     with open("./config.json", "r") as f:
@@ -125,6 +142,12 @@ def setup(voice_name: str = "SortingHat") -> bool:
     return retVal
 
 def get_all_voices() -> list:
+    """
+    Returns a list of all available voices.
+
+    Returns:
+        A list of voice names.
+    """
     retVal = []
     with open("./config.json", "r") as f:
         data = json.load(f)
@@ -133,12 +156,22 @@ def get_all_voices() -> list:
     return retVal
 
 def generate_random_filename(file_extension=".mp3") -> str:
+    """
+    Generates a random filename with the specified extension.
+
+    Args:
+        file_extension: The file extension to use.
+
+    Returns:
+        A random filename with the specified extension.
+    """
     random_bytes = os.urandom(16)
     filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_" + uuid.uuid4().hex + file_extension
     return filename
 
 def is_file_in_directory(file_name, directory_path):
-    """Checks if a file exists in a directory.
+    """
+    Checks if a file exists in a directory.
 
     Args:
         file_path (str): The path to the file.
@@ -154,11 +187,22 @@ def is_file_in_directory(file_name, directory_path):
         return False
 
 def iterfile(file_path: str):
-    """Stream an mp3 file in chunks. Python reads file in 8192-byte chunk"""
+    """
+    Stream an mp3 file in chunks. Python reads file in 8192-byte chunk
+    """
     with open(file_path, mode="rb") as file_chunk:
         yield from file_chunk
 
 async def speech_to_text(file_path: str) -> str:
+    """
+    Transcribes an audio file to text.
+
+    Args:
+        file_path: The path to the audio file.
+
+    Returns:
+        The transcription of the audio file as a string.
+    """
     # Initialize the Groq client
     client = Groq()
     # Create a transcription of the audio file
@@ -175,6 +219,15 @@ async def speech_to_text(file_path: str) -> str:
     return transcription.text
 
 async def text_to_speech(prompt: str) -> str:
+    """
+    Generates an audio file from text.
+
+    Args:
+        prompt: The text to generate audio from.
+
+    Returns:
+        The filename of the generated audio file.
+    """
     tts_url = "https://api.fish.audio/v1/tts"
     api_key = os.getenv("FISH_API_KEY")
 
@@ -225,6 +278,15 @@ app.add_middleware(
 
 @app.post("/api/voice/{voice}")
 async def set_voice(voice: str):
+    """
+    Sets the voice of the chatbot.
+
+    Args:
+        voice: The name of the voice to use.
+
+    Returns:
+        A JSON response indicating the status of the request.
+    """
     voice_list = get_all_voices()
     if voice in voice_list:
         setup(voice)
@@ -234,6 +296,15 @@ async def set_voice(voice: str):
 
 @app.post("/api/text")
 async def generate_response_from_text(request: Request):
+    """
+    Generates a response from text input.
+
+    Args:
+        request: The request object containing the text input.
+
+    Returns:
+        A JSON response containing the generated response and the output audio file path.
+    """
     data = await request.json()
     if data is None:
         return JSONResponse({"error": "Invalid JSON input"}, 400)
@@ -246,7 +317,14 @@ async def generate_response_from_text(request: Request):
 
 @app.post("/api/audio/upload")
 async def generate_response_from_speech(file: UploadFile = File(...)):
-    """Generate reply from input prompt of type WAV
+    """
+    Generates a response from speech input.
+
+    Args:
+        file: The uploaded audio file.
+
+    Returns:
+        A JSON response containing the generated response and the output audio file path.
     """
     try:
         # Ensure the file format is WAV
@@ -272,9 +350,14 @@ async def generate_response_from_speech(file: UploadFile = File(...)):
 
 @app.get("/api/audio/download/{file_name}")
 async def return_audio_file_response(file_name: str):
-    """"
-    example:
-    GET /api/audio/download/response.mp3
+    """
+    Returns an audio file response.
+
+    Args:
+        file_name: The name of the audio file to return.
+
+    Returns:
+        A FileResponse containing the audio file.
     """
     if is_file_in_directory(file_name, "output"):
         print(f"{file_name} found.")
@@ -285,13 +368,24 @@ async def return_audio_file_response(file_name: str):
 
 @app.get("/api/heartbeat")
 async def return_heartbeat():
+    """
+    Returns a heartbeat response.
+
+    Returns:
+        A JSON response indicating the status of the application.
+    """
     return JSONResponse({"status": "running"})
 
 @app.get("/api/stream/{file_name}")
 async def stream(file_name: str):
-    """"
-    example:
-    GET /api/stream/response.mp3
+    """
+    Streams an audio file.
+
+    Args:
+        file_name: The name of the audio file to stream.
+
+    Returns:
+        A StreamingResponse containing the audio file.
     """
     if is_file_in_directory(file_name, "output"):
         print(f"{file_name} found.")
@@ -316,6 +410,12 @@ async def stream(file_name: str):
 
 @app.get("/api/audio/latest")
 async def return_latest_audio_file():
+    """
+    Returns the latest audio file.
+
+    Returns:
+        A JSON response containing the status and the filename of the latest audio file.
+    """
     global latest_mp3_response
     if is_file_in_directory(latest_mp3_response, "output"):
         return JSONResponse({"status": "latest", "file": latest_mp3_response})
