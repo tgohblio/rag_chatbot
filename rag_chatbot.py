@@ -484,37 +484,3 @@ with gr.Blocks() as demo:
 # Run this from the terminal as you would normally start a FastAPI app: `uvicorn rag_chatbot:app` and
 # navigate to http://localhost:8000/gradio in your browser.
 app = gr.mount_gradio_app(app, demo, path="/gradio")
-
-async def response_from_text(prompt: str) -> tuple:
-    """
-    Generates a response from text input.
-
-    Args:
-        prompt: The text input.
-
-    Returns:
-        A tuple containing the generated response and the output audio file path.
-    """
-    msg = chatbot.chat_with_rag(prompt)
-    output_path = await text_to_speech(msg)
-    global latest_mp3_response
-    latest_mp3_response = output_path
-    return (msg, output_path)
-
-
-async def response_from_speech(file_path) -> tuple:
-    """
-    Generates a response from speech input.
-
-    Args:
-        file_path: The path to the audio file.
-
-    Returns:
-        A tuple containing the generated response and the output audio file path.
-    """
-    prompt = await speech_to_text(file_path)
-    msg = chatbot.chat_with_rag(prompt)
-    output_path = await text_to_speech(msg)
-    global latest_mp3_response
-    latest_mp3_response = output_path
-    return (msg, output_path)
