@@ -464,7 +464,17 @@ async def transcribe(prompt, audio):
 # The user interface
 with gr.Blocks() as demo:
     gr.Markdown("# ChatBot App Demo")
-
+    gr.HTML("""
+    <html>
+    <body>
+        <p>1) Type in the textbox to start, or press the "Record" button to use your voice (remember to press "Stop"!).</p>
+        <p>2) Press "Send" to send your message or voice to the chatbot.</p>
+        <p>3) Press "Clear" to clear the input textbox and voice recording.</p>
+        <p> <u>Note:</u><br> 
+            If there's both text and voice recording, the voice recording takes higher priority and is sent.</p>
+    </body>
+    </html>
+    """)
     with gr.Column():    
         with gr.Row():
             with gr.Column():
