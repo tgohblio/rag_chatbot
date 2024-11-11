@@ -12,9 +12,10 @@ from contextlib import asynccontextmanager
 from groq import Groq
 from dotenv import load_dotenv, find_dotenv
 from llama_index.core.llms import ChatMessage
-from llama_index.llms.openai import OpenAI
-from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
-# https://docs.llamaindex.ai/en/stable/examples/llm/groq/
+from llama_index.llms.groq import Groq
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from llama_index.core.memory import ChatMemoryBuffer
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings
 
 _ = load_dotenv(find_dotenv())  # read local .env file
 
@@ -35,18 +36,24 @@ class chatModel:
             config: A dictionary containing the configuration for the chat model.
         """
         self.voice_model_id = config["model id"]
-        self._model = OpenAI("gpt-4o-mini")
+        self._model = Groq("llama-3.1-70b-versatile", api_key=os.getenv("GROQ_API_KEY"))
         self._system_prompt = config["system prompt"]
-        self._init_message = [
-            ChatMessage(role="system", content=self._system_prompt),
-        ]
+        self._memory = ChatMemoryBuffer.from_defaults(token_limit=3900)
+
+        # loads BAAI/bge-small-en-v1.5
+        self._embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
+
+        Settings.llm = self._model
+        Settings.embed_model = self._embed_model
+
         if len(config["folder path"]):
             self._data = SimpleDirectoryReader(input_dir=os.path.join(os.getcwd(), config["folder path"])).load_data()
             self._index = VectorStoreIndex.from_documents(self._data)
             self._chat_engine = self._index.as_chat_engine(
-                chat_mode="react",
+                chat_mode="condense_plus_context",
+                memory = self._memory,
+                system_prompt = self._system_prompt,
                 llm=self._model,
-                chat_history=self._init_message,
                 verbose=True
             )
 
