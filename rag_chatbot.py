@@ -449,15 +449,17 @@ async def return_latest_audio_file():
     else:
         return JSONResponse({"status": "latest", "file": ""}, 404)
 
-async def transcribe(prompt, audio):
+async def transcribe(prompt, audio) -> tuple:
     """Send a text message or audio file to an external server
         and get back a text reply from the role-playing chatbot"""
     if audio is not None:
-        msg, _ = await response_from_speech(audio)
-        return msg
+        msg, file_name = await response_from_speech(audio)
+        file_path = os.path.join(os.getcwd(), "output", file_name)
+        return (msg, file_path)
     elif len(prompt):
-        msg, _ = await response_from_text(prompt)
-        return msg
+        msg, file_name = await response_from_text(prompt)
+        file_path = os.path.join(os.getcwd(), "output", file_name)
+        return (msg, file_path)
     elif audio is None and prompt is None:
         return "Please provide either a prompt or an audio file"
 
@@ -479,6 +481,7 @@ with gr.Blocks() as demo:
         with gr.Row():
             with gr.Column():
                 output_text = gr.Textbox(lines=2, label="Output")
+                output_audio = gr.Audio(label="Chatbot's Voice", type="filepath", format="mp3")
 
             with gr.Column():
                 prompt_input = gr.Textbox(lines=2, label="Type your message", placeholder="Who are you?")
@@ -488,7 +491,7 @@ with gr.Blocks() as demo:
             clear_button = gr.Button("Clear", variant="secondary")
             clear_button.click(lambda: (None, None), inputs=[], outputs=[prompt_input, audio_input])
             transcribe_button = gr.Button("Send", variant="primary")
-            transcribe_button.click(transcribe, inputs=[prompt_input, audio_input], outputs=output_text)
+            transcribe_button.click(transcribe, inputs=[prompt_input, audio_input], outputs=[output_text, output_audio])
 
 # mount gradio UI 
 # Run this from the terminal as you would normally start a FastAPI app: `uvicorn rag_chatbot:app` and
